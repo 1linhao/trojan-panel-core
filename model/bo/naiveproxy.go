@@ -59,3 +59,8 @@ type HandleAuth struct {
 	HideVia            TypeMessage `json:"hide_via"`
 	ProbeResistance    TypeMessage `json:"probe_resistance"`
 }
+
+type NaiveProxyUserTraffic struct {
+	Rx uint64 `json:"rx"`
+	Tx uint64 `json:"tx"`
+}

@@ -566,6 +566,45 @@ func CronHandlerDownloadAndUpload() {
 		})
 	}()
 
+	// naiveproxy
+	go func() {
+		naiveProxyInstance := process.NewNaiveProxyInstance()
+		naiveProxyCmdMap := naiveProxyInstance.GetCmdMap()
+		naiveProxyCmdMap.Range(func(apiPort, cmd any) bool {
+			naiveProxyApi := naiveproxy.NewNaiveProxyApi(apiPort.(uint))
+			users, err := naiveProxyApi.ListUserTraffic(true)
+			if err == nil {
+				userLists := util.SplitMap(users, 50)
+				for _, userList := range userLists {
+					go func(users map[string]bo.NaiveProxyUserTraffic) {
+						accountUpdateBos := make([]bo.AccountUpdateBo, 0)
+						for pass, traffic := range users {
+							accountUpdateBo := bo.AccountUpdateBo{
+								Pass:     pass,
+								Download: uint64ToInt(traffic.Rx),
+								Upload:   uint64ToInt(traffic.Tx),
+							}
+							accountUpdateBos = append(accountUpdateBos, accountUpdateBo)
+						}
+						mutex, err := redis.RsLock(constant.LockNaiveProxyUpdate)
+						if err != nil {
+							return
+						}
+						for _, account := range accountUpdateBos {
+							if err = dao.UpdateAccountFlowByPassOrHash(&account.Pass, nil, account.Download,
+								account.Upload); err != nil {
+								logrus.Errorf("naiveproxy UpdateAccountFlow err apiPort: %d err: %v", apiPort, err)
+								continue
+							}
+						}
+						redis.RsUnLock(mutex)
+					}(userList)
+				}
+			}
+			return true
+		})
+	}()
+
 	// hysteria2
 	go func() {
 		hysteria2Instance := process.NewHysteria2Instance()
@@ -604,6 +643,14 @@ func CronHandlerDownloadAndUpload() {
 			return true
 		})
 	}()
+}
+
+func uint64ToInt(value uint64) int {
+	maxInt := int(^uint(0) >> 1)
+	if value > uint64(maxInt) {
+		return maxInt
+	}
+	return int(value)
 }
 
 func RemoveAccount(password string) error {

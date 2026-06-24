@@ -58,6 +58,42 @@ func (n *naiveProxyApi) ListUsers() (*[]bo.HandleAuth, error) {
 	return handleAuths, nil
 }
 
+// ListUserTraffic queries per-user traffic from the custom NaiveProxy build.
+func (n *naiveProxyApi) ListUserTraffic(reset bool) (map[string]bo.NaiveProxyUserTraffic, error) {
+	url := fmt.Sprintf("http://127.0.0.1:%d/trojan-panel/naiveproxy/traffic", n.apiPort)
+	if reset {
+		url += "?reset=true"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		logrus.Errorf("NaiveProxy ListUserTraffic NewRequest err: %v", err)
+		return nil, errors.New(constant.SysError)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	defer func() {
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}()
+	if err != nil || resp.StatusCode != http.StatusOK {
+		logrus.Errorf("NaiveProxy ListUserTraffic http resp err: %v", err)
+		return nil, errors.New(constant.SysError)
+	}
+	contentByte, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logrus.Errorf("NaiveProxy ListUserTraffic IO err: %v", err)
+		return nil, errors.New(constant.SysError)
+	}
+	var users map[string]bo.NaiveProxyUserTraffic
+	if err = json.Unmarshal(contentByte, &users); err != nil {
+		logrus.Errorf("NaiveProxy ListUserTraffic Unmarshal err: %v", err)
+		return nil, errors.New(constant.SysError)
+	}
+	return users, nil
+}
+
 // GetUser query users on a node
 func (n *naiveProxyApi) GetUser(pass string) (*bo.HandleAuth, *int, error) {
 	users, err := n.ListUsers()
