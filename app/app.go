@@ -395,7 +395,7 @@ func CronHandlerUser() {
 					// deleted account
 					var banAccountBos []bo.AccountBo
 					for _, user := range *users {
-						pass := user.AuthPassDeprecated
+						pass := user.Pass()
 						var banFlag = true
 						for _, account := range accountBos {
 							if account.Pass == pass {
@@ -422,7 +422,7 @@ func CronHandlerUser() {
 					for _, account := range accountBos {
 						var addFlag = true
 						for _, user := range *users {
-							pass := user.AuthPassDeprecated
+							pass := user.Pass()
 							if account.Pass == pass {
 								addFlag = false
 								break

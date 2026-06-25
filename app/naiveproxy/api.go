@@ -3,6 +3,7 @@ package naiveproxy
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,7 +102,7 @@ func (n *naiveProxyApi) GetUser(pass string) (*bo.HandleAuth, *int, error) {
 		return nil, nil, err
 	}
 	for index, user := range *users {
-		if user.AuthPassDeprecated == pass {
+		if user.Pass() == pass {
 			return &user, &index, nil
 		}
 	}
@@ -129,8 +130,7 @@ func (n *naiveProxyApi) AddUser(dto dto.NaiveProxyAddUserDto) error {
 		logrus.Errorf("NaiveProxy AddUser Unmarshal err: %v", err)
 		return errors.New(constant.SysError)
 	}
-	handleAuth.AuthUserDeprecated = dto.Username
-	handleAuth.AuthPassDeprecated = dto.Pass
+	handleAuth.AuthCredentials = [][]byte{encodeAuthCredential(dto.Username, dto.Pass)}
 	addUserDtoByte, err := json.Marshal(handleAuth)
 	if err != nil {
 		logrus.Errorf("NaiveProxy AddUser Marshal err: %v", err)
@@ -158,6 +158,13 @@ func (n *naiveProxyApi) AddUser(dto dto.NaiveProxyAddUserDto) error {
 		return errors.New(constant.SysError)
 	}
 	return nil
+}
+
+func encodeAuthCredential(username string, pass string) []byte {
+	raw := []byte(fmt.Sprintf("%s:%s", username, pass))
+	credential := make([]byte, base64.StdEncoding.EncodedLen(len(raw)))
+	base64.StdEncoding.Encode(credential, raw)
+	return credential
 }
 
 // DeleteUser delete user on node
