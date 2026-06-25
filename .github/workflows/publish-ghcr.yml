@@ -1,0 +1,96 @@
+name: Publish GHCR Image
+
+on:
+  push:
+    branches:
+      - test
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/1linhao/trojan-panel-core
+  OFFICIAL_CORE_IMAGE: jonssonyan/trojan-panel-core:latest
+  TARGETOS: linux
+  TARGETARCH: amd64
+  TARGETVARIANT: ""
+  TARGET_SUFFIX: linux-amd64
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: true
+
+      - name: Build core binary
+        run: |
+          mkdir -p build
+          CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+            go build -o "build/trojan-panel-core-${TARGET_SUFFIX}" -trimpath -ldflags "-s -w -buildid=" .
+
+      - name: Copy protocol binaries from official core image
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 "${OFFICIAL_CORE_IMAGE}"
+          container_id="$(docker create --platform linux/amd64 "${OFFICIAL_CORE_IMAGE}")"
+          trap 'docker rm -f "${container_id}" >/dev/null 2>&1 || true' EXIT
+          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/xray/xray" "build/xray-${TARGET_SUFFIX}"
+          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/trojango/trojan-go" "build/trojan-go-${TARGET_SUFFIX}"
+          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/hysteria/hysteria" "build/hysteria-${TARGET_SUFFIX}"
+          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/naiveproxy/naiveproxy" "build/naiveproxy-${TARGET_SUFFIX}"
+          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/hysteria2/hysteria2" "build/hysteria2-${TARGET_SUFFIX}"
+
+      - name: Build custom NaiveProxy with traffic API
+        run: |
+          OUTPUT="${GITHUB_WORKSPACE}/build/naiveproxy-${TARGET_SUFFIX}" \
+            CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+            bash scripts/build-naiveproxy-with-traffic.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=test,enable=${{ github.ref == 'refs/heads/test' }}
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            TARGETOS=${{ env.TARGETOS }}
+            TARGETARCH=${{ env.TARGETARCH }}
+            TARGETVARIANT=${{ env.TARGETVARIANT }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
