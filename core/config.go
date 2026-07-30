@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"trojan-panel-core/model/constant"
 	"trojan-panel-core/util"
 )
@@ -29,34 +30,44 @@ var (
 	crtPath        string
 	keyPath        string
 	grpcPort       string
+	grpcTLSMode    string
+	grpcClientCA   string
 	serverPort     string
 	version        bool
 )
 
 func init() {
-	flag.StringVar(&host, "host", "localhost", "database address")
-	flag.StringVar(&user, "user", "root", "database username")
-	flag.StringVar(&password, "password", "123456", "database password")
-	flag.StringVar(&port, "port", "3306", "database port")
-	flag.StringVar(&database, "database", "trojan_panel_db", "database name")
-	flag.StringVar(&accountTable, "accountTable", "account", "account table name")
-	flag.StringVar(&redisHost, "redisHost", "127.0.0.1", "redis address")
-	flag.StringVar(&redisPort, "redisPort", "6379", "redis port")
-	flag.StringVar(&redisPassword, "redisPassword", "123456", "redis password")
+	flag.StringVar(&host, "host", envOr("MARIADB_IP", "mariadb_ip", "localhost"), "database address")
+	flag.StringVar(&user, "user", envOr("MARIADB_USER", "mariadb_user", "root"), "database username")
+	flag.StringVar(&password, "password", envOr("MARIADB_PASSWORD", "mariadb_pas", ""), "deprecated: use MARIADB_PASSWORD")
+	flag.StringVar(&port, "port", envOr("MARIADB_PORT", "mariadb_port", "3306"), "database port")
+	flag.StringVar(&database, "database", envOr("DATABASE", "database", "trojan_panel_db"), "database name")
+	flag.StringVar(&accountTable, "accountTable", envOr("ACCOUNT_TABLE", "account_table", "account"), "account table name")
+	flag.StringVar(&redisHost, "redisHost", envOr("REDIS_HOST", "redis_host", "127.0.0.1"), "redis address")
+	flag.StringVar(&redisPort, "redisPort", envOr("REDIS_PORT", "redis_port", "6379"), "redis port")
+	flag.StringVar(&redisPassword, "redisPassword", envOr("REDIS_PASSWORD", "redis_pass", ""), "deprecated: use REDIS_PASSWORD")
 	flag.StringVar(&redisDb, "redisDb", "0", "redis default database")
 	flag.StringVar(&redisMaxIdle, "redisMaxIdle", strconv.FormatInt(int64(runtime.NumCPU()*2), 10), "redis maximum number of idle connections")
 	flag.StringVar(&redisMaxActive, "redisMaxActive", strconv.FormatInt(int64(runtime.NumCPU()*2+2), 10), "redis maximum number of connections")
 	flag.StringVar(&redisWait, "redisWait", "true", "does Redis wait")
-	flag.StringVar(&crtPath, "crtPath", "", "crt cert")
-	flag.StringVar(&keyPath, "keyPath", "", "key cert")
-	flag.StringVar(&grpcPort, "grpcPort", "8100", "gRPC port")
-	flag.StringVar(&serverPort, "serverPort", "8082", "service port")
+	flag.StringVar(&crtPath, "crtPath", envOr("TLS_CERT_PATH", "crt_path", ""), "TLS server certificate")
+	flag.StringVar(&keyPath, "keyPath", envOr("TLS_KEY_PATH", "key_path", ""), "TLS server private key")
+	flag.StringVar(&grpcPort, "grpcPort", envOr("GRPC_PORT", "grpc_port", "8100"), "gRPC port")
+	flag.StringVar(&grpcTLSMode, "grpcTLSMode", envOr("GRPC_TLS_MODE", "grpc_tls_mode", "legacy"), "gRPC TLS mode: legacy or mtls")
+	flag.StringVar(&grpcClientCA, "grpcClientCA", envOr("GRPC_CLIENT_CA_PATH", "grpc_client_ca_path", ""), "gRPC client CA certificate")
+	flag.StringVar(&serverPort, "serverPort", envOr("SERVER_PORT", "server_port", "8082"), "service port")
 	flag.BoolVar(&version, "version", false, "print version info")
 	flag.Usage = usage
-	flag.Parse()
+	isTest := strings.HasSuffix(os.Args[0], ".test")
+	if !isTest {
+		flag.Parse()
+	}
 	if version {
 		_, _ = fmt.Fprint(os.Stdout, constant.TrojanPanelCoreVersion)
 		os.Exit(0)
+	}
+	if isTest {
+		return
 	}
 
 	// initialization log
@@ -79,7 +90,7 @@ func init() {
 
 	configFilePath := constant.ConfigFilePath
 	if !util.Exists(configFilePath) {
-		file, err := os.Create(configFilePath)
+		file, err := os.OpenFile(configFilePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
 			logrus.Errorf("create config.ini err: %v", err)
 			panic(err)
@@ -113,10 +124,12 @@ max_age=30
 compress=true
 [grpc]
 port=%s
+tls_mode=%s
+client_ca_path=%s
 [server]
 port=%s
 `, host, user, password, port, database, accountTable, redisHost, redisPort, redisPassword, redisDb,
-			redisMaxIdle, redisMaxActive, redisWait, crtPath, keyPath, grpcPort, serverPort))
+			redisMaxIdle, redisMaxActive, redisWait, crtPath, keyPath, grpcPort, grpcTLSMode, grpcClientCA, serverPort))
 		if err != nil {
 			logrus.Errorf("config.ini file write err: %v", err)
 			panic(err)
@@ -202,9 +215,21 @@ type LogConfig struct {
 
 // GrpcConfig gRPC
 type GrpcConfig struct {
-	Port string `ini:"port"` // gRPC port
+	Port         string `ini:"port"` // gRPC port
+	TLSMode      string `ini:"tls_mode"`
+	ClientCAPath string `ini:"client_ca_path"`
 }
 
 type ServerConfig struct {
 	Port int `ini:"port"` // service port
+}
+
+func envOr(primary, legacy, fallback string) string {
+	if value := os.Getenv(primary); value != "" {
+		return value
+	}
+	if value := os.Getenv(legacy); value != "" {
+		return value
+	}
+	return fallback
 }

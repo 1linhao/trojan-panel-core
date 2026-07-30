@@ -5,9 +5,11 @@ Trojan Panel Core
 ## Supported node types
 
 1. Xray
-2. Trojan Go
-3. Hysteria1/Hysteria2
-4. NaiveProxy
+2. Hysteria2
+3. NaiveProxy
+
+Trojan-Go and Hysteria v1 are retired. Their historical numeric type IDs remain
+reserved for database compatibility and must not be reused.
 
 Default data processing：
 
@@ -62,7 +64,6 @@ You can subscribe to my channel on YouTube: https://www.youtube.com/@jonssonyan
 ## Support
 
 - [trojan](https://github.com/trojan-gfw/trojan)
-- [trojan-go](https://github.com/p4gefau1t/trojan-go)
 - [Xray-core](https://github.com/XTLS/Xray-core)
-- [hysteria](https://github.com/HyNetwork/hysteria)
+- [hysteria](https://github.com/apernet/hysteria)
 - [naiveproxy](https://github.com/klzgrad/naiveproxy)

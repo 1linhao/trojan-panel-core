@@ -12,7 +12,7 @@ import (
 type process struct {
 	mutex      *sync.Mutex
 	cmdMap     *sync.Map
-	binaryType int // 1/xray 2/trojan-go 3/hysteria
+	binaryType int
 }
 
 func (p *process) GetCmdMap() *sync.Map {
@@ -75,10 +75,6 @@ func GetState(nodeTypeId uint, apiPort uint) bool {
 	switch nodeTypeId {
 	case constant.Xray:
 		return GetXrayState(apiPort)
-	case constant.TrojanGo:
-		return GetTrojanGoState(apiPort)
-	case constant.Hysteria:
-		return GetHysteriaState(apiPort)
 	case constant.NaiveProxy:
 		return GetNaiveProxyState(apiPort)
 	case constant.Hysteria2:

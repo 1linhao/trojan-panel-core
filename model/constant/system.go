@@ -15,15 +15,12 @@ const (
 	SqliteFilePath string = "config/sqlite/trojan_panel_core.db"
 
 	XrayPath          string = "bin/xray/config"
-	TrojanGoPath      string = "bin/trojango/config"
-	HysteriaPath      string = "bin/hysteria/config"
 	NaiveProxyPath    string = "bin/naiveproxy/config"
 	Hysteria2Path     string = "bin/hysteria2/config"
 	XrayBinPath       string = "bin/xray"
-	TrojanGoBinPath   string = "bin/trojango"
-	HysteriaBinPath   string = "bin/hysteria"
 	NaiveProxyBinPath string = "bin/naiveproxy"
 	Hysteria2BinPath  string = "bin/hysteria2"
+	KernelRuntimePath string = "/tpdata/trojan-panel-core/runtime"
 
 	TrojanPanelCoreVersion = "v2.3.1"
 )

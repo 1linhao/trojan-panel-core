@@ -10,7 +10,7 @@ func TestNaiveProxyListUsers(t *testing.T) {
 	api := NewNaiveProxyApi(30883)
 	users, err := api.ListUsers()
 	if err != nil {
-		fmt.Printf("%v\n", err)
+		t.Skipf("NaiveProxy test service is not running: %v", err)
 	}
 	for _, user := range *users {
 		fmt.Println(user.AuthUserDeprecated)

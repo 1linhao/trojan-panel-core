@@ -1,12 +1,9 @@
-name: Publish GHCR Image
+name: Publish immutable multi-arch image
 
 on:
-  push:
-    branches:
-      - feature/sing-box-subscribe
-    tags:
-      - "v*"
   workflow_dispatch:
+  push:
+    branches: [feature/sing-box-subscribe]
 
 permissions:
   contents: read
@@ -14,83 +11,92 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/1linhao/trojan-panel-core
-  OFFICIAL_CORE_IMAGE: jonssonyan/trojan-panel-core:latest
-  TARGETOS: linux
-  TARGETARCH: amd64
-  TARGETVARIANT: ""
-  TARGET_SUFFIX: linux-amd64
+  RESCUE_XRAY_VERSION: v26.3.27
+  RESCUE_HYSTERIA_VERSION: v2.10.0
 
 jobs:
-  build:
+  binaries:
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.23.x"
           cache: true
-
-      - name: Build core binary
+      - name: Build TP Core
         run: |
           mkdir -p build
-          CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
-            go build -o "build/trojan-panel-core-${TARGET_SUFFIX}" -trimpath -ldflags "-s -w -buildid=" .
-
-      - name: Copy protocol binaries from official core image
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -trimpath -ldflags "-s -w -buildid=" \
+            -o build/trojan-panel-core-linux-${{ matrix.arch }} .
+      - name: Copy trusted rescue Xray and Hysteria2
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          docker pull --platform linux/amd64 "${OFFICIAL_CORE_IMAGE}"
-          container_id="$(docker create --platform linux/amd64 "${OFFICIAL_CORE_IMAGE}")"
-          trap 'docker rm -f "${container_id}" >/dev/null 2>&1 || true' EXIT
-          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/xray/xray" "build/xray-${TARGET_SUFFIX}"
-          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/trojango/trojan-go" "build/trojan-go-${TARGET_SUFFIX}"
-          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/hysteria/hysteria" "build/hysteria-${TARGET_SUFFIX}"
-          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/naiveproxy/naiveproxy" "build/naiveproxy-${TARGET_SUFFIX}"
-          docker cp "${container_id}:/tpdata/trojan-panel-core/bin/hysteria2/hysteria2" "build/hysteria2-${TARGET_SUFFIX}"
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          if [ "${{ matrix.arch }}" = amd64 ]; then
+            xray_asset=Xray-linux-64.zip
+          else
+            xray_asset=Xray-linux-arm64-v8a.zip
+          fi
+          xray_base="https://github.com/XTLS/Xray-core/releases/download/${RESCUE_XRAY_VERSION}"
+          curl -fsSLO "${xray_base}/${xray_asset}"
+          curl -fsSLO "${xray_base}/${xray_asset}.dgst"
+          expected="$(awk '$1 == "SHA2-256=" { print $2 }' "${xray_asset}.dgst")"
+          echo "${expected}  ${xray_asset}" | sha256sum -c -
+          unzip -p "${xray_asset}" xray > "build/xray-linux-${{ matrix.arch }}"
 
-      - name: Build custom NaiveProxy with traffic API
+          release="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/apernet/hysteria/releases/tags/app%2F${RESCUE_HYSTERIA_VERSION}")"
+          asset="hysteria-linux-${{ matrix.arch }}"
+          asset_url="$(jq -r --arg name "${asset}" '.assets[] | select(.name == $name) | .browser_download_url' <<<"${release}")"
+          hashes_url="$(jq -r '.assets[] | select(.name == "hashes.txt") | .browser_download_url' <<<"${release}")"
+          test -n "${asset_url}"
+          test -n "${hashes_url}"
+          curl -fsSL "${asset_url}" -o "build/hysteria2-linux-${{ matrix.arch }}"
+          expected="$(curl -fsSL "${hashes_url}" | awk -v name="${asset}" '$2 == "build/" name { print $1 }')"
+          echo "${expected}  build/hysteria2-linux-${{ matrix.arch }}" | sha256sum -c -
+          chmod 755 "build/xray-linux-${{ matrix.arch }}" "build/hysteria2-linux-${{ matrix.arch }}"
+      - name: Build NaiveProxy traffic adapter
         run: |
-          OUTPUT="${GITHUB_WORKSPACE}/build/naiveproxy-${TARGET_SUFFIX}" \
-            CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+          OUTPUT="${GITHUB_WORKSPACE}/build/naiveproxy-linux-${{ matrix.arch }}" \
+            CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
             bash scripts/build-naiveproxy-with-traffic.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.arch }}
+          path: build/*
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+  publish:
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          path: build
+          merge-multiple: true
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=singbox,enable=${{ github.ref == 'refs/heads/feature/sing-box-subscribe' }}
-            type=ref,event=tag
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=sha,prefix=sha-
-
-      - name: Build and push
+      - id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
-          build-args: |
-            TARGETOS=${{ env.TARGETOS }}
-            TARGETARCH=${{ env.TARGETARCH }}
-            TARGETVARIANT=${{ env.TARGETVARIANT }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ env.IMAGE_NAME }}:kernel-upgrade-${{ github.sha }}
+      - run: echo '${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}' > image-digest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-digest
+          path: image-digest.txt

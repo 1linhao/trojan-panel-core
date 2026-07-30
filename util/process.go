@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,24 +30,36 @@ func GetBinaryFilePath(binaryType int) (string, error) {
 	var binaryName string
 	switch binaryType {
 	case constant.Xray:
+		if runtimeBinary := managedRuntimeBinary("xray"); runtimeBinary != "" {
+			return runtimeBinary, nil
+		}
 		binaryName = "xray"
 		binaryPath = constant.XrayBinPath
-	case constant.TrojanGo:
-		binaryName = "trojan-go"
-		binaryPath = constant.TrojanGoBinPath
-	case constant.Hysteria:
-		binaryName = "hysteria"
-		binaryPath = constant.HysteriaBinPath
 	case constant.NaiveProxy:
 		binaryName = "naiveproxy"
 		binaryPath = constant.NaiveProxyBinPath
 	case constant.Hysteria2:
+		if runtimeBinary := managedRuntimeBinary("hysteria2"); runtimeBinary != "" {
+			return runtimeBinary, nil
+		}
 		binaryName = "hysteria2"
 		binaryPath = constant.Hysteria2BinPath
 	default:
 		return "", errors.New(constant.BinaryFileNotExist)
 	}
 	return fmt.Sprintf("%s/%s", binaryPath, binaryName), nil
+}
+
+func managedRuntimeBinary(kernel string) string {
+	runtimePath := os.Getenv("TP_KERNEL_RUNTIME")
+	if runtimePath == "" {
+		runtimePath = constant.KernelRuntimePath
+	}
+	path := fmt.Sprintf("%s/%s/current/%s", runtimePath, kernel, kernel)
+	if Exists(path) {
+		return path
+	}
+	return ""
 }
 
 func GetConfigFile(binaryType int, apiPort uint) (string, error) {
@@ -71,12 +84,6 @@ func GetConfigFilePath(binaryType int, apiPort uint) (string, error) {
 		if err != nil {
 			return "", err
 		}
-	case constant.TrojanGo:
-		configPath = constant.TrojanGoPath
-		configFileName = fmt.Sprintf("config-%d.json", apiPort)
-	case constant.Hysteria:
-		configPath = constant.HysteriaPath
-		configFileName = fmt.Sprintf("config-%d.json", apiPort)
 	case constant.NaiveProxy:
 		configPath = constant.NaiveProxyPath
 		configFileName = fmt.Sprintf("config-%d.json", apiPort)

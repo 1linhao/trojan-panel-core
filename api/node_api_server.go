@@ -22,14 +22,14 @@ func (s *NodeApiServer) AddNode(ctx context.Context, nodeAddDto *NodeAddDto) (*R
 	if nodeAddDto.Port != 0 && (nodeAddDto.Port <= 100 || nodeAddDto.Port >= 30000) {
 		err = errors.New(constant.PortRangeError)
 	}
-	if nodeAddDto.NodeTypeId == constant.Xray || nodeAddDto.NodeTypeId == constant.TrojanGo || nodeAddDto.NodeTypeId == constant.NaiveProxy {
+	if nodeAddDto.NodeTypeId == constant.Xray || nodeAddDto.NodeTypeId == constant.NaiveProxy {
 		if !util.IsPortAvailable(uint(nodeAddDto.Port), "tcp") {
 			err = errors.New(constant.PortIsOccupied)
 		}
 		if !util.IsPortAvailable(uint(nodeAddDto.Port+30000), "tcp") {
 			err = errors.New(constant.PortIsOccupied)
 		}
-	} else if nodeAddDto.NodeTypeId == constant.Hysteria || nodeAddDto.NodeTypeId == constant.Hysteria2 {
+	} else if nodeAddDto.NodeTypeId == constant.Hysteria2 {
 		if !util.IsPortAvailable(uint(nodeAddDto.Port), "udp") {
 			err = errors.New(constant.PortIsOccupied)
 		}
@@ -53,20 +53,6 @@ func (s *NodeApiServer) AddNode(ctx context.Context, nodeAddDto *NodeAddDto) (*R
 		XrayTag:            nodeAddDto.XrayTag,
 		XraySniffing:       nodeAddDto.XraySniffing,
 		XrayAllocate:       nodeAddDto.XrayAllocate,
-		// Trojan Go
-		TrojanGoSni:             nodeAddDto.TrojanGoSni,
-		TrojanGoMuxEnable:       uint(nodeAddDto.TrojanGoMuxEnable),
-		TrojanGoWebsocketEnable: uint(nodeAddDto.TrojanGoWebsocketEnable),
-		TrojanGoWebsocketPath:   nodeAddDto.TrojanGoWebsocketPath,
-		TrojanGoWebsocketHost:   nodeAddDto.TrojanGoWebsocketHost,
-		TrojanGoSSEnable:        uint(nodeAddDto.TrojanGoSSEnable),
-		TrojanGoSSMethod:        nodeAddDto.TrojanGoSSMethod,
-		TrojanGoSSPassword:      nodeAddDto.TrojanGoSSPassword,
-		// Hysteria
-		HysteriaProtocol: nodeAddDto.HysteriaProtocol,
-		HysteriaObfs:     nodeAddDto.HysteriaObfs,
-		HysteriaUpMbps:   int(nodeAddDto.HysteriaUpMbps),
-		HysteriaDownMbps: int(nodeAddDto.HysteriaDownMbps),
 		// Hysteria2
 		Hysteria2ObfsPassword: nodeAddDto.Hysteria2ObfsPassword,
 		Hysteria2UpMbps:       int(nodeAddDto.Hysteria2UpMbps),

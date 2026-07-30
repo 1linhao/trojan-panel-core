@@ -1,12 +1,10 @@
 package process
 
 import (
-	"context"
 	"errors"
 	"github.com/sirupsen/logrus"
 	"os/exec"
 	"sync"
-	"time"
 	"trojan-panel-core/model/constant"
 	"trojan-panel-core/util"
 )
@@ -51,35 +49,18 @@ func (h *Hysteria2Process) StartHysteria2(apiPort uint) error {
 		}
 		cmd := exec.Command(binaryFilePath, "-c", configFilePath, "server")
 		if cmd.Err != nil {
-			if err = util.RemoveFile(configFilePath); err != nil {
-				return err
-			}
 			logrus.Errorf("hysteria2 command error err: %v", err)
 			return errors.New(constant.Hysteria2StartError)
 		}
 		if err := cmd.Start(); err != nil {
-			if err = util.RemoveFile(configFilePath); err != nil {
-				return err
-			}
 			logrus.Errorf("start hysteria2 error err: %v", err)
 			return errors.New(constant.Hysteria2StartError)
 		}
 		h.cmdMap.Store(apiPort, cmd)
 
-		// timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		done := make(chan error)
 		go func() {
-			done <- cmd.Wait()
-			select {
-			case err := <-done:
-				if err != nil {
-					logrus.Errorf("hysteria2 process wait error err: %v", err)
-					h.releaseProcess(apiPort, configFilePath)
-				}
-			case <-ctx.Done():
-				logrus.Errorf("hysteria2 process wait timeout err: %v", err)
+			if waitErr := cmd.Wait(); waitErr != nil {
+				logrus.Errorf("hysteria2 process wait error err: %v", waitErr)
 				h.releaseProcess(apiPort, configFilePath)
 			}
 		}()
@@ -97,9 +78,6 @@ func (h *Hysteria2Process) releaseProcess(apiPort uint, configFilePath string) {
 			h.cmdMap.Delete(apiPort)
 			if err := cmd.Process.Release(); err != nil {
 				logrus.Errorf("hysteria2 process release error err: %v", err)
-			}
-			if err := util.RemoveFile(configFilePath); err != nil {
-				logrus.Errorf("hysteria2 process remove file error err: %v", err)
 			}
 		}
 	}

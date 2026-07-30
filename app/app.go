@@ -2,14 +2,11 @@ package app
 
 import (
 	"errors"
-	trojangoservice "github.com/p4gefau1t/trojan-go/api/service"
 	"github.com/sirupsen/logrus"
 	"regexp"
 	"sync"
-	"trojan-panel-core/app/hysteria"
 	"trojan-panel-core/app/hysteria2"
 	"trojan-panel-core/app/naiveproxy"
-	"trojan-panel-core/app/trojango"
 	"trojan-panel-core/app/xray"
 	"trojan-panel-core/core/process"
 	"trojan-panel-core/dao"
@@ -30,12 +27,6 @@ func InitApp() {
 	if err := xray.InitXrayApp(); err != nil {
 		logrus.Errorf("xray app init err: %s", err.Error())
 	}
-	if err := trojango.InitTrojanGoApp(); err != nil {
-		logrus.Errorf("trojango app init err: %s", err.Error())
-	}
-	if err := hysteria.InitHysteriaApp(); err != nil {
-		logrus.Errorf("hysteria app init err: %s", err.Error())
-	}
 	if err := naiveproxy.InitNaiveProxyApp(); err != nil {
 		logrus.Errorf("naiverpoxy app init err: %s", err.Error())
 	}
@@ -47,14 +38,6 @@ func InitApp() {
 func InitBinFile() {
 	if err := xray.InitXrayBinFile(); err != nil {
 		logrus.Errorf("download xray file err: %v", err)
-		panic(err)
-	}
-	if err := trojango.InitTrojanGoBinFile(); err != nil {
-		logrus.Errorf("download trojango file err: %v", err)
-		panic(err)
-	}
-	if err := hysteria.InitHysteriaBinFile(); err != nil {
-		logrus.Errorf("download hysteria file err: %v", err)
 		panic(err)
 	}
 	if err := naiveproxy.InitNaiveProxyBinFile(); err != nil {
@@ -92,34 +75,6 @@ func StartApp(nodeAddDto dto.NodeAddDto) error {
 			protocol = nodeAddDto.XrayProtocol
 			xrayFlow = nodeAddDto.XrayFlow
 			xraySSMethod = nodeAddDto.XraySSMethod
-		case constant.TrojanGo:
-			if err := trojango.StartTrojanGo(dto.TrojanGoConfigDto{
-				ApiPort:         nodeAddDto.Port + 30000,
-				Port:            nodeAddDto.Port,
-				Domain:          nodeAddDto.Domain,
-				Sni:             nodeAddDto.TrojanGoSni,
-				MuxEnable:       nodeAddDto.TrojanGoMuxEnable,
-				WebsocketEnable: nodeAddDto.TrojanGoWebsocketEnable,
-				WebsocketPath:   nodeAddDto.TrojanGoWebsocketPath,
-				WebsocketHost:   nodeAddDto.TrojanGoWebsocketHost,
-				SSEnable:        nodeAddDto.TrojanGoSSEnable,
-				SSMethod:        nodeAddDto.TrojanGoSSMethod,
-				SSPassword:      nodeAddDto.TrojanGoSSPassword,
-			}); err != nil {
-				return err
-			}
-		case constant.Hysteria:
-			if err := hysteria.StartHysteria(dto.HysteriaConfigDto{
-				ApiPort:  nodeAddDto.Port + 30000,
-				Port:     nodeAddDto.Port,
-				Protocol: nodeAddDto.HysteriaProtocol,
-				Obfs:     nodeAddDto.HysteriaObfs,
-				Domain:   nodeAddDto.Domain,
-				UpMbps:   nodeAddDto.HysteriaUpMbps,
-				DownMbps: nodeAddDto.HysteriaDownMbps,
-			}); err != nil {
-				return err
-			}
 		case constant.NaiveProxy:
 			if err := naiveproxy.StartNaiveProxy(dto.NaiveProxyConfigDto{
 				ApiPort: nodeAddDto.Port + 30000,
@@ -166,14 +121,6 @@ func StopApp(apiPort uint, nodeTypeId uint) error {
 			if err := xray.StopXray(apiPort, true); err != nil {
 				return err
 			}
-		case constant.TrojanGo:
-			if err := trojango.StopTrojanGo(apiPort, true); err != nil {
-				return err
-			}
-		case constant.Hysteria:
-			if err := hysteria.StopHysteria(apiPort, true); err != nil {
-				return err
-			}
 		case constant.NaiveProxy:
 			if err := naiveproxy.StopNaiveProxy(apiPort, true); err != nil {
 				return err
@@ -197,14 +144,6 @@ func RestartApp(apiPort uint, nodeTypeId uint) error {
 	switch nodeTypeId {
 	case constant.Xray:
 		if err := xray.RestartXray(apiPort); err != nil {
-			return err
-		}
-	case constant.TrojanGo:
-		if err := trojango.RestartTrojanGo(apiPort); err != nil {
-			return err
-		}
-	case constant.Hysteria:
-		if err := hysteria.RestartHysteria(apiPort); err != nil {
 			return err
 		}
 	case constant.NaiveProxy:
@@ -312,74 +251,6 @@ func CronHandlerUser() {
 			})
 		}(accountBoList)
 
-		// trojango
-		go func(accountBos []bo.AccountBo) {
-			trojanGoInstance := process.NewTrojanGoInstance()
-			trojanGoCmdMap := trojanGoInstance.GetCmdMap()
-			trojanGoCmdMap.Range(func(apiPort, cmd any) bool {
-				go func() {
-					trojanGoApi := trojango.NewTrojanGoApi(apiPort.(uint))
-					users, err := trojanGoApi.ListUsers()
-					if err != nil {
-						return
-					}
-
-					// deleted account
-					var banAccountBos []bo.AccountBo
-					for _, user := range users {
-						hash := user.GetUser().GetHash()
-						var banFlag = true
-						for _, account := range accountBos {
-							if account.Hash == hash {
-								banFlag = false
-								break
-							}
-						}
-						if banFlag {
-							banAccountBos = append(banAccountBos, bo.AccountBo{
-								Hash: hash,
-							})
-						}
-					}
-					for _, item := range banAccountBos {
-						// call api to delete user
-						if err = trojanGoApi.DeleteUser(item.Hash); err != nil {
-							logrus.Errorf("trojango DeleteUser err: %v", err)
-							continue
-						}
-					}
-
-					// account added
-					var addAccountBos []bo.AccountBo
-					for _, account := range accountBos {
-						var addFlag = true
-						for _, user := range users {
-							hash := user.GetUser().GetHash()
-							if account.Hash == hash {
-								addFlag = false
-								break
-							}
-						}
-						if addFlag {
-							addAccountBos = append(addAccountBos, bo.AccountBo{
-								Hash: account.Hash,
-							})
-						}
-					}
-					for _, item := range addAccountBos {
-						// call api to add user
-						if err = trojanGoApi.AddUser(dto.TrojanGoAddUserDto{
-							Hash: item.Hash,
-						}); err != nil {
-							logrus.Errorf("trojango AddUser err: %v", err)
-							continue
-						}
-					}
-				}()
-				return true
-			})
-		}(accountBoList)
-
 		// naiveproxy
 		go func(accountBos []bo.AccountBo) {
 			naiveProxyInstance := process.NewNaiveProxyInstance()
@@ -452,7 +323,7 @@ func CronHandlerUser() {
 	}
 }
 
-// CronHandlerDownloadAndUpload scheduled tasks: update the account's download and upload traffic in the database. Hysteria does not currently support traffic statistics
+// CronHandlerDownloadAndUpload scheduled tasks: update the account's download and upload traffic in the database. Hysteria2 does not currently support traffic statistics
 func CronHandlerDownloadAndUpload() {
 	// xray
 	go func() {
@@ -514,52 +385,6 @@ func CronHandlerDownloadAndUpload() {
 						}
 						redis.RsUnLock(mutex)
 					}(statList)
-				}
-			}
-			return true
-		})
-	}()
-
-	// trojango
-	go func() {
-		trojanGoInstance := process.NewTrojanGoInstance()
-		trojanGoCmdMap := trojanGoInstance.GetCmdMap()
-		trojanGoCmdMap.Range(func(apiPort, cmd any) bool {
-			trojanGoApi := trojango.NewTrojanGoApi(apiPort.(uint))
-			users, err := trojanGoApi.ListUsers()
-			if err == nil {
-				userLists := util.SplitArr(users, 50)
-				for _, userList := range userLists {
-					go func(users []*trojangoservice.UserStatus) {
-						accountUpdateBos := make([]bo.AccountUpdateBo, 0)
-						for _, user := range users {
-							hash := user.GetUser().GetHash()
-							downloadTraffic := int(user.GetTrafficTotal().GetDownloadTraffic())
-							uploadTraffic := int(user.GetTrafficTotal().GetUploadTraffic())
-							if err = trojanGoApi.ReSetUserTrafficByHash(hash); err != nil {
-								logrus.Errorf("trojango ReSetUserTraffic err apiPort: %d err: %v", apiPort, err)
-								continue
-							}
-							accountUpdateBo := bo.AccountUpdateBo{}
-							accountUpdateBo.Hash = hash
-							accountUpdateBo.Download = downloadTraffic
-							accountUpdateBo.Upload = uploadTraffic
-							accountUpdateBos = append(accountUpdateBos, accountUpdateBo)
-						}
-
-						mutex, err := redis.RsLock(constant.LockTrojanGoUpdate)
-						if err != nil {
-							return
-						}
-						for _, account := range accountUpdateBos {
-							if err = dao.UpdateAccountFlowByPassOrHash(nil, &account.Hash, account.Download,
-								account.Upload); err != nil {
-								logrus.Errorf("trojango UpdateAccountFlow err apiPort: %d err: %v", apiPort, err)
-								continue
-							}
-						}
-						redis.RsUnLock(mutex)
-					}(userList)
 				}
 			}
 			return true
@@ -663,22 +488,6 @@ func RemoveAccount(password string) error {
 				xrayApi := xray.NewXrayApi(apiPort.(uint))
 				if err := xrayApi.DeleteUser(password); err != nil {
 					logrus.Errorf("xray DeleteUser err: %v", err)
-				}
-			}(password)
-			return true
-		})
-	}()
-
-	// trojango
-	go func() {
-		trojanGoInstance := process.NewTrojanGoInstance()
-		trojanGoCmdMap := trojanGoInstance.GetCmdMap()
-		trojanGoCmdMap.Range(func(apiPort, cmd any) bool {
-			go func(password string) {
-				trojanGoApi := trojango.NewTrojanGoApi(apiPort.(uint))
-				// call api to delete user
-				if err := trojanGoApi.DeleteUser(password); err != nil {
-					logrus.Errorf("trojango DeleteUser err: %v", err)
 				}
 			}(password)
 			return true

@@ -5,7 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-playground/validator/v10"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
+	"strings"
+	"trojan-panel-core/core"
 	"trojan-panel-core/dao/redis"
 	"trojan-panel-core/model/constant"
 	"trojan-panel-core/service"
@@ -20,6 +24,17 @@ func InitValidator() {
 
 // Token Authentication
 func authRequest(ctx context.Context) error {
+	if strings.EqualFold(core.Config.GrpcConfig.TLSMode, "mtls") {
+		remote, ok := peer.FromContext(ctx)
+		if !ok {
+			return errors.New(constant.UnauthorizedError)
+		}
+		tlsInfo, ok := remote.AuthInfo.(credentials.TLSInfo)
+		if !ok || len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.PeerCertificates) == 0 {
+			return errors.New(constant.UnauthorizedError)
+		}
+		return nil
+	}
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return errors.New(constant.UnauthorizedError)

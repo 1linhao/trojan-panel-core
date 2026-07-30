@@ -5,9 +5,10 @@
 ## 支持的节点类型
 
 1. Xray
-2. Trojan Go
-3. Hysteria1/Hysteria2
-4. NaiveProxy
+2. Hysteria2
+3. NaiveProxy
+
+Trojan-Go 与 Hysteria v1 已退役。为兼容历史数据库，其类型编号仍保留且禁止复用。
 
 默认数据处理：
 
@@ -61,7 +62,6 @@ You can subscribe to my channel on YouTube: https://www.youtube.com/@jonssonyan
 ## 致谢
 
 - [trojan](https://github.com/trojan-gfw/trojan)
-- [trojan-go](https://github.com/p4gefau1t/trojan-go)
 - [Xray-core](https://github.com/XTLS/Xray-core)
-- [hysteria](https://github.com/HyNetwork/hysteria)
+- [hysteria](https://github.com/apernet/hysteria)
 - [naiveproxy](https://github.com/klzgrad/naiveproxy)

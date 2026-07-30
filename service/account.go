@@ -6,7 +6,7 @@ import (
 	"trojan-panel-core/model/vo"
 )
 
-// SelectAccountByPass hysteria account authentication
+// SelectAccountByPass performs Hysteria2 account authentication.
 func SelectAccountByPass(pass string) (*vo.AccountHysteriaVo, error) {
 	return dao.SelectAccountByPass(pass)
 }
