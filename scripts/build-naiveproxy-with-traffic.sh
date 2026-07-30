@@ -15,7 +15,10 @@ XCADDY_BIN="${XCADDY_BIN:-$(go env GOPATH)/bin/xcaddy}"
 mkdir -p "${WORK_DIR}" "$(dirname "${OUTPUT}")"
 
 if [[ ! -x "${XCADDY_BIN}" ]]; then
-  go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.4
+  mkdir -p "$(dirname "${XCADDY_BIN}")"
+  env -u GOOS -u GOARCH -u GOARM \
+    GOBIN="$(dirname "${XCADDY_BIN}")" \
+    go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.4
 fi
 
 if [[ ! -d "${WORK_DIR}/forwardproxy/.git" ]]; then
