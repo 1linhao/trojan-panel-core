@@ -61,7 +61,7 @@ func (h *Hysteria2Process) StartHysteria2(apiPort uint) error {
 		go func() {
 			if waitErr := cmd.Wait(); waitErr != nil {
 				logrus.Errorf("hysteria2 process wait error err: %v", waitErr)
-				h.releaseProcess(apiPort, configFilePath)
+				h.releaseProcess(apiPort, cmd)
 			}
 		}()
 		return nil
@@ -70,17 +70,12 @@ func (h *Hysteria2Process) StartHysteria2(apiPort uint) error {
 	return errors.New(constant.Hysteria2StartError)
 }
 
-func (h *Hysteria2Process) releaseProcess(apiPort uint, configFilePath string) {
+func (h *Hysteria2Process) releaseProcess(apiPort uint, expected *exec.Cmd) {
 	load, ok := h.GetCmdMap().Load(apiPort)
-	if ok {
-		cmd := load.(*exec.Cmd)
-		if !cmd.ProcessState.Success() {
-			h.cmdMap.Delete(apiPort)
-			if err := cmd.Process.Release(); err != nil {
-				logrus.Errorf("hysteria2 process release error err: %v", err)
-			}
-		}
+	if !ok || load != expected {
+		return
 	}
+	h.cmdMap.CompareAndDelete(apiPort, expected)
 }
 
 func GetHysteria2State(apiPort uint) bool {

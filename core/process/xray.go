@@ -61,7 +61,7 @@ func (x *XrayProcess) StartXray(apiPort uint) error {
 		go func() {
 			if waitErr := cmd.Wait(); waitErr != nil {
 				logrus.Errorf("xray process wait error err: %v", waitErr)
-				x.releaseProcess(apiPort, configFilePath)
+				x.releaseProcess(apiPort, cmd)
 			}
 		}()
 		return nil
@@ -70,17 +70,12 @@ func (x *XrayProcess) StartXray(apiPort uint) error {
 	return errors.New(constant.XrayStartError)
 }
 
-func (x *XrayProcess) releaseProcess(apiPort uint, configFilePath string) {
+func (x *XrayProcess) releaseProcess(apiPort uint, expected *exec.Cmd) {
 	load, ok := NewXrayProcess().GetCmdMap().Load(apiPort)
-	if ok {
-		cmd := load.(*exec.Cmd)
-		if !cmd.ProcessState.Success() {
-			x.cmdMap.Delete(apiPort)
-			if err := cmd.Process.Release(); err != nil {
-				logrus.Errorf("xray process release error err: %v", err)
-			}
-		}
+	if !ok || load != expected {
+		return
 	}
+	x.cmdMap.CompareAndDelete(apiPort, expected)
 }
 
 func GetXrayState(apiPort uint) bool {
