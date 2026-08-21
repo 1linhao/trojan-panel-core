@@ -24,6 +24,9 @@ var userLinkRegex = regexp.MustCompile("user>>>([^>]+)>>>traffic>>>(downlink|upl
 
 func InitApp() {
 	InitBinFile()
+	if initializeTrafficQuota() {
+		return
+	}
 	if err := xray.InitXrayApp(); err != nil {
 		logrus.Errorf("xray app init err: %s", err.Error())
 	}
@@ -51,6 +54,9 @@ func InitBinFile() {
 }
 
 func StartApp(nodeAddDto dto.NodeAddDto) error {
+	if err := CanStartProxy(); err != nil {
+		return err
+	}
 	var mutex sync.Mutex
 	defer mutex.Unlock()
 	if mutex.TryLock() {

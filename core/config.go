@@ -33,6 +33,7 @@ var (
 	grpcTLSMode    string
 	grpcClientCA   string
 	serverPort     string
+	nodeServerID   string
 	version        bool
 )
 
@@ -56,6 +57,7 @@ func init() {
 	flag.StringVar(&grpcTLSMode, "grpcTLSMode", envOr("GRPC_TLS_MODE", "grpc_tls_mode", "legacy"), "gRPC TLS mode: legacy or mtls")
 	flag.StringVar(&grpcClientCA, "grpcClientCA", envOr("GRPC_CLIENT_CA_PATH", "grpc_client_ca_path", ""), "gRPC client CA certificate")
 	flag.StringVar(&serverPort, "serverPort", envOr("SERVER_PORT", "server_port", "8082"), "service port")
+	flag.StringVar(&nodeServerID, "nodeServerId", envOr("NODE_SERVER_ID", "node_server_id", "0"), "panel node_server id")
 	flag.BoolVar(&version, "version", false, "print version info")
 	flag.Usage = usage
 	isTest := strings.HasSuffix(os.Args[0], ".test")
@@ -128,8 +130,10 @@ tls_mode=%s
 client_ca_path=%s
 [server]
 port=%s
+[node]
+server_id=%s
 `, host, user, password, port, database, accountTable, redisHost, redisPort, redisPassword, redisDb,
-			redisMaxIdle, redisMaxActive, redisWait, crtPath, keyPath, grpcPort, grpcTLSMode, grpcClientCA, serverPort))
+			redisMaxIdle, redisMaxActive, redisWait, crtPath, keyPath, grpcPort, grpcTLSMode, grpcClientCA, serverPort, nodeServerID))
 		if err != nil {
 			logrus.Errorf("config.ini file write err: %v", err)
 			panic(err)
@@ -177,6 +181,7 @@ type AppConfig struct {
 	LogConfig    `ini:"log"`
 	GrpcConfig   `ini:"grpc"`
 	ServerConfig `ini:"server"`
+	NodeConfig   `ini:"node"`
 }
 
 // MySQLConfig MySQL
@@ -202,6 +207,10 @@ type RedisConfig struct {
 type CertConfig struct {
 	CrtPath string `ini:"crt_path"`
 	KeyPath string `ini:"key_path"`
+}
+
+type NodeConfig struct {
+	ServerID uint `ini:"server_id"`
 }
 
 // LogConfig log

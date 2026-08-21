@@ -26,11 +26,11 @@ func init() {
 	dao.InitMySQL()
 	dao.InitSqlLite()
 	redis.InitRedis()
-	middleware.InitCron()
 	middleware.InitRateLimiter()
 	api.InitValidator()
 	api.InitGrpcServer()
 	app.InitApp()
+	middleware.InitCron()
 }
 func closeResource() {
 	dao.CloseDb()

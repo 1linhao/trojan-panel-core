@@ -18,37 +18,55 @@ func UpdateAccountFlowByPassOrHash(pass *string, hash *string, download int, upl
 		return nil
 	}
 
-	mySQLConfig := core.Config.MySQLConfig
-
-	var values []interface{}
-	downloadUpdateSql := ""
-	if download != 0 {
-		downloadUpdateSql = "download = download + ?"
-		values = append(values, download)
+	if download < 0 || upload < 0 {
+		return errors.New(constant.SysError)
 	}
-	uploadUpdateSql := ""
-	if upload != 0 {
-		if downloadUpdateSql == "" {
-			uploadUpdateSql = "upload = upload + ?"
-		} else {
-			uploadUpdateSql = ",upload = upload + ?"
-		}
-		values = append(values, upload)
+	serverID := core.Config.NodeConfig.ServerID
+	if serverID == 0 {
+		return errors.New("node.server_id is required for traffic accounting")
 	}
-
-	sql := fmt.Sprintf("update %s set %s where", mySQLConfig.AccountTable, downloadUpdateSql+uploadUpdateSql)
-
-	if pass != nil && *pass != "" {
-		sql += " pass = ?"
-		values = append(values, *pass)
-	}
-	if hash != nil && *hash != "" {
-		sql += " hash = ?"
-		values = append(values, *hash)
-	}
-	_, err := db.Exec(sql, values...)
+	tx, err := db.Begin()
 	if err != nil {
-		logrus.Errorln(err.Error())
+		return errors.New(constant.SysError)
+	}
+	defer tx.Rollback()
+	var period, mode string
+	var totalLimit, uploadLimit, downloadLimit uint64
+	if err = tx.QueryRow(`SELECT traffic_period,traffic_limit_mode,traffic_total_limit,traffic_upload_limit,traffic_download_limit
+		FROM node_server WHERE id=? FOR UPDATE`, serverID).Scan(&period, &mode, &totalLimit, &uploadLimit, &downloadLimit); err != nil {
+		logrus.Errorln(err)
+		return errors.New(constant.SysError)
+	}
+	where, credential := "pass", ""
+	if pass != nil && *pass != "" {
+		credential = *pass
+	} else if hash != nil && *hash != "" {
+		where, credential = "hash", *hash
+	}
+	if credential == "" {
+		return errors.New(constant.SysError)
+	}
+	var accountID uint
+	var oldDownload, oldUpload uint64
+	query := fmt.Sprintf("SELECT id,download,upload FROM %s WHERE %s=? FOR UPDATE", core.Config.MySQLConfig.AccountTable, where)
+	if err = tx.QueryRow(query, credential).Scan(&accountID, &oldDownload, &oldUpload); err != nil {
+		logrus.Errorln(err)
+		return errors.New(constant.SysError)
+	}
+	if _, err = tx.Exec(fmt.Sprintf("UPDATE %s SET download=download+?,upload=upload+? WHERE id=?", core.Config.MySQLConfig.AccountTable), download, upload, accountID); err != nil {
+		return errors.New(constant.SysError)
+	}
+	if _, err = tx.Exec(`INSERT INTO account_traffic_total(account_id,upload,download) VALUES(?,?,?)
+		ON DUPLICATE KEY UPDATE upload=GREATEST(upload,?)+?,download=GREATEST(download,?)+?`,
+		accountID, oldUpload+uint64(upload), oldDownload+uint64(download), oldUpload, upload, oldDownload, download); err != nil {
+		return errors.New(constant.SysError)
+	}
+	if _, err = tx.Exec(`INSERT INTO account_server_traffic_daily(traffic_date,account_id,node_server_id,upload,download)
+		VALUES(CURRENT_DATE(),?,?,?,?) ON DUPLICATE KEY UPDATE upload=upload+VALUES(upload),download=download+VALUES(download)`,
+		accountID, serverID, upload, download); err != nil {
+		return errors.New(constant.SysError)
+	}
+	if err = tx.Commit(); err != nil {
 		return errors.New(constant.SysError)
 	}
 	return nil
