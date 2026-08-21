@@ -18,6 +18,12 @@ func CurrentServerQuota() (bo.QuotaStatus, error) {
 	if status.Period == "none" {
 		return status, nil
 	}
+	if status.Period != "day" && status.Period != "month" && status.Period != "year" {
+		return status, errors.New("invalid node server traffic period")
+	}
+	if status.Mode != "combined" && status.Mode != "separate" {
+		return status, errors.New("invalid node server traffic limit mode")
+	}
 	dateCondition := "traffic_date=CURRENT_DATE()"
 	switch status.Period {
 	case "month":

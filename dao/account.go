@@ -30,10 +30,8 @@ func UpdateAccountFlowByPassOrHash(pass *string, hash *string, download int, upl
 		return errors.New(constant.SysError)
 	}
 	defer tx.Rollback()
-	var period, mode string
-	var totalLimit, uploadLimit, downloadLimit uint64
-	if err = tx.QueryRow(`SELECT traffic_period,traffic_limit_mode,traffic_total_limit,traffic_upload_limit,traffic_download_limit
-		FROM node_server WHERE id=? FOR UPDATE`, serverID).Scan(&period, &mode, &totalLimit, &uploadLimit, &downloadLimit); err != nil {
+	var lockedServerID uint
+	if err = tx.QueryRow(`SELECT id FROM node_server WHERE id=? FOR UPDATE`, serverID).Scan(&lockedServerID); err != nil {
 		logrus.Errorln(err)
 		return errors.New(constant.SysError)
 	}
