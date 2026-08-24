@@ -59,6 +59,11 @@ func UpdateAccountFlowByPassOrHash(pass *string, hash *string, download int, upl
 		accountID, oldUpload+uint64(upload), oldDownload+uint64(download), oldUpload, upload, oldDownload, download); err != nil {
 		return errors.New(constant.SysError)
 	}
+	if _, err = tx.Exec(`INSERT INTO account_traffic_daily(traffic_date,account_id,upload,download)
+		VALUES(CURRENT_DATE(),?,?,?) ON DUPLICATE KEY UPDATE upload=upload+VALUES(upload),download=download+VALUES(download)`,
+		accountID, upload, download); err != nil {
+		return errors.New(constant.SysError)
+	}
 	if _, err = tx.Exec(`INSERT INTO account_server_traffic_daily(traffic_date,account_id,node_server_id,upload,download)
 		VALUES(CURRENT_DATE(),?,?,?,?) ON DUPLICATE KEY UPDATE upload=upload+VALUES(upload),download=download+VALUES(download)`,
 		accountID, serverID, upload, download); err != nil {
