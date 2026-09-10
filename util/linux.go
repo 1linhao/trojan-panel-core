@@ -6,9 +6,11 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
+	gopsutilnet "github.com/shirou/gopsutil/net"
 	"github.com/sirupsen/logrus"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 	"trojan-panel-core/model/constant"
 )
@@ -83,9 +85,64 @@ func GetMemPercent() (float64, error) {
 
 // GetDiskPercent get disk usage
 func GetDiskPercent() (float64, error) {
-	var err error
-	parts, err := disk.Partitions(true)
-	diskInfo, err := disk.Usage(parts[0].Mountpoint)
-	value, err := strconv.ParseFloat(fmt.Sprintf("%.1f", diskInfo.UsedPercent), 64)
-	return value, err
+	diskInfo, err := disk.Usage("/")
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseFloat(fmt.Sprintf("%.1f", diskInfo.UsedPercent), 64)
+}
+
+// GetNetworkSpeed measures aggregate non-loopback traffic over the supplied
+// interval. Sent bytes are upload and received bytes are download from the
+// node server's point of view.
+func GetNetworkSpeed(interval time.Duration) (upload, download uint64, err error) {
+	if interval <= 0 {
+		return 0, 0, errors.New("network sampling interval must be positive")
+	}
+	beforeStats, err := gopsutilnet.IOCounters(true)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(beforeStats) == 0 {
+		return 0, 0, errors.New("no network counters found")
+	}
+	time.Sleep(interval)
+	afterStats, err := gopsutilnet.IOCounters(true)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(afterStats) == 0 {
+		return 0, 0, errors.New("no network counters found")
+	}
+	before := aggregateNetworkCounters(beforeStats)
+	after := aggregateNetworkCounters(afterStats)
+	upload, download = calculateNetworkSpeed(before, after, interval)
+	return upload, download, nil
+}
+
+func aggregateNetworkCounters(stats []gopsutilnet.IOCountersStat) gopsutilnet.IOCountersStat {
+	var total gopsutilnet.IOCountersStat
+	for _, stat := range stats {
+		name := strings.ToLower(stat.Name)
+		if name == "lo" || strings.HasPrefix(name, "loopback") {
+			continue
+		}
+		total.BytesSent += stat.BytesSent
+		total.BytesRecv += stat.BytesRecv
+	}
+	return total
+}
+
+func calculateNetworkSpeed(before, after gopsutilnet.IOCountersStat, interval time.Duration) (upload, download uint64) {
+	seconds := interval.Seconds()
+	if seconds <= 0 {
+		return 0, 0
+	}
+	if after.BytesSent >= before.BytesSent {
+		upload = uint64(float64(after.BytesSent-before.BytesSent) / seconds)
+	}
+	if after.BytesRecv >= before.BytesRecv {
+		download = uint64(float64(after.BytesRecv-before.BytesRecv) / seconds)
+	}
+	return upload, download
 }

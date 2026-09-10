@@ -65,6 +65,9 @@ message NodeServerInfoVo {
   float cpuUsed = 1;
   float memUsed = 2;
   float diskUsed = 3;
+  uint64 networkUploadBytesPerSecond = 4;
+  uint64 networkDownloadBytesPerSecond = 5;
+  int64 sampledAt = 6;
 }
 
 message AccountRemoveDto {
